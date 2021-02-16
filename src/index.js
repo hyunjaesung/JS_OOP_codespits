@@ -42,7 +42,7 @@ const type = (target, type) => {
   } else if (!(target instanceof type)) {
     throw `invalidType ${target} : ${type}`;
   }
-  return type;
+  return target;
 };
 
 const BinderItem = class {
@@ -69,20 +69,22 @@ const Binder = class {
   }
 
   render(viewmodel, _ = type(viewmodel, ViewModel)) {
+    console.log(this.#items);
     this.#items.forEach((item) => {
       // binderItem 의 두가지 속성 찾기
       const vm = type(viewmodel[item.viewmodel], ViewModel);
       const el = item.el; // el 은 binderItem에서 체크 했다
-
       Object.entries(vm.styles).forEach(
-        ([key, value]) => (el.styles[key] = value)
+        ([key, value]) => (el.style[key] = value)
       );
       Object.entries(vm.attribute).forEach(([key, value]) =>
         el.setAttribute(key, value)
       );
-      Object.entries(vm.properties).forEach(
-        ([key, value]) => (el[key] = value)
-      );
+      console.log(vm.properties, el.innerHTML);
+      Object.entries(vm.properties).forEach(([key, value]) => {
+        el[key] = value;
+      });
+      console.log();
       Object.entries(vm.events).forEach(
         ([key, value]) => (el["on" + key] = (e) => value.call(el, e, viewmodel))
         // call 로 콜백 함수의 this를 바인딩 해서 확정
@@ -103,7 +105,7 @@ const Scanner = class {
       this.checkItem(binder, target); // 자식들도 검정해서 넣어주기
       if (target.firstElementChild) stack.push(target.firstElementChild);
       // 자식 안에 자식이 있는지 확인
-      if (target.nextElementChild) stack.push(target.nextElementChild);
+      if (target.nextElementSibling) stack.push(target.nextElementSibling);
       // 자식의 형제가 있는지 확인
       // 스택 때문에 계속 형제의 형제 형제의 형제 가면서 쫘악 다 끌어온다
     }
@@ -116,3 +118,27 @@ const Scanner = class {
     if (vm) binder.add(new BinderItem(el, vm));
   }
 };
+
+const viewmodel = ViewModel.get({
+  potatoWrapper: ViewModel.get({
+    styles: {
+      width: "50%",
+      background: "#ffa",
+      cursor: "pointer"
+    }
+  }),
+  potatoTitle: ViewModel.get({
+    properties: {
+      innerHTML: "Title"
+    }
+  }),
+  potatoContents: ViewModel.get({
+    properties: {
+      innerHTML: "Contents"
+    }
+  })
+});
+
+const scanner = new Scanner();
+const binder = scanner.scan(document.querySelector("#target"));
+binder.render(viewmodel);
