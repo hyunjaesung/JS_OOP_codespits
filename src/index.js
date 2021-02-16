@@ -91,3 +91,28 @@ const Binder = class {
     });
   }
 };
+
+const Scanner = class {
+  scan(el, _ = type(el, HTMLElement)) {
+    const binder = new Binder(); // 바인더 만든다음에 넣어서 리턴
+    this.checkItem(binder, el); // 조상 넣어주기
+    // DOM 루프
+    const stack = [el.firstElementChild];
+    let target;
+    while ((target = stack.pop())) {
+      this.checkItem(binder, target); // 자식들도 검정해서 넣어주기
+      if (target.firstElementChild) stack.push(target.firstElementChild);
+      // 자식 안에 자식이 있는지 확인
+      if (target.nextElementChild) stack.push(target.nextElementChild);
+      // 자식의 형제가 있는지 확인
+      // 스택 때문에 계속 형제의 형제 형제의 형제 가면서 쫘악 다 끌어온다
+    }
+    return binder;
+  }
+
+  checkItem(binder, el) {
+    const vm = el.getAttribute("data-viewmodel");
+    // html 스펙이 바뀌면 여기만 바꾸면 된다
+    if (vm) binder.add(new BinderItem(el, vm));
+  }
+};
