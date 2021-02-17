@@ -1,3 +1,4 @@
+// 1차 버전
 const ViewModel = class {
   static #private = Symbol();
 
