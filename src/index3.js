@@ -93,7 +93,6 @@ const Binder = class extends ViewModelListener {
   }
 
   viewmodelUpdated(updated) {
-    console.log("bindupdated", updated);
     const items = {};
     this.#items.forEach((item) => {
       items[item.viewmodel] = [
@@ -269,7 +268,6 @@ binder.addProcessor(
   new (class extends Processor {
     _process(vm, el, k, v) {
       el.style[k] = v;
-      console.log(el.style[k]);
     }
   })("styles")
 );
@@ -315,10 +313,6 @@ const rootViewModel = ViewModel.get({
     this.contents.properties.innerHTML = Math.random()
       .toString(16)
       .replace(".", "");
-    console.log(
-      this.wrapper.styles.background,
-      this.contents.properties.innerHTML
-    );
   },
   wrapper,
   title,
