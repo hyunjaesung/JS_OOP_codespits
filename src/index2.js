@@ -163,26 +163,61 @@ const Processor = class {
   }
 };
 
-new (class extends Processor {
-  _process(vm, el, key, value) {
-    el.style[key] = value;
-  }
-})("styles");
+// 적용 코드
 
-new (class extends Processor {
-  _process(vm, el, key, value) {
-    el[key] = value;
-  }
-})("properties");
+const viewmodel = ViewModel.get({
+  potatoWrapper: ViewModel.get({
+    styles: {
+      width: "50%",
+      background: "#ffa",
+      cursor: "pointer"
+    }
+  }),
+  potatoTitle: ViewModel.get({
+    properties: {
+      innerHTML: "Title"
+    }
+  }),
+  potatoContents: ViewModel.get({
+    properties: {
+      innerHTML: "Contents"
+    }
+  })
+});
 
-new (class extends Processor {
-  _process(vm, el, key, value) {
-    el.setAttribute(key, value);
-  }
-})("attribute");
+const scanner = new Scanner();
+const binder = scanner.scan(document.querySelector("#target"));
 
-new (class extends Processor {
-  _process(vm, el, key, value) {
-    el["on" + key] = (e) => value.call(el, e, vm);
-  }
-})("events");
+// Binder -> Processor 의존 관계 형성
+// 화살표 방향은 짝사랑의 방향
+// Binder가 변하든 말든 Process는 영향이 없다
+binder.addProcessor(
+  new (class extends Processor {
+    _process(vm, el, key, value) {
+      el.style[key] = value;
+    }
+  })("styles")
+);
+binder.addProcessor(
+  new (class extends Processor {
+    _process(vm, el, key, value) {
+      el[key] = value;
+    }
+  })("properties")
+);
+binder.addProcessor(
+  new (class extends Processor {
+    _process(vm, el, key, value) {
+      el.setAttribute(key, value);
+    }
+  })("attribute")
+);
+binder.addProcessor(
+  new (class extends Processor {
+    _process(vm, el, key, value) {
+      el["on" + key] = (e) => value.call(el, e, vm);
+    }
+  })("events")
+);
+
+binder.render(viewmodel);
