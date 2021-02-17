@@ -75,11 +75,11 @@ const Binder = class extends ViewModelListener {
       const el = item.el;
 
       processors.forEach(([pKey, processor]) => {
-        if (vm[pKey]) {
-          Object.entries(vm[pKey]).forEach(([key, value]) => {
-            processor.process(vm, el, key, value);
-          });
-        }
+        // if (vm[pKey]) {
+        Object.entries(vm[pKey]).forEach(([key, value]) => {
+          processor.process(vm, el, key, value);
+        });
+        // }
       });
     });
   }
@@ -93,6 +93,7 @@ const Binder = class extends ViewModelListener {
   }
 
   viewmodelUpdated(updated) {
+    console.log("bindupdated", updated);
     const items = {};
     this.#items.forEach((item) => {
       items[item.viewmodel] = [
@@ -101,9 +102,10 @@ const Binder = class extends ViewModelListener {
       ];
     });
     updated.forEach(({ subKey, category, key, value }) => {
+      console.log(subKey, category, key, value);
       if (!items[subKey]) return;
-      const [vm, el] = items[subKey],
-        processor = this.#processors[category];
+      const [vm, el] = items[subKey];
+      const processor = this.#processors[category];
       // injection 이 안 되어 있을 경우  return
       if (!el || !processor) return;
       processor.process(vm, el, key, value);
@@ -141,11 +143,12 @@ const Processor = class {
 // Info객체
 const ViewModelValue = class {
   subKey;
-  cat;
+  category;
   key;
   value;
-  constructor(cat, key, value) {
-    this.cat = cat;
+  constructor(subKey, category, key, value) {
+    this.subKey = subKey;
+    this.category = category;
     this.key = key;
     this.value = value;
     Object.freeze(this);
@@ -181,7 +184,7 @@ const ViewModel = class extends ViewModelListener {
   }
 
   styles = {};
-  attribute = {};
+  attributes = {};
   properties = {};
   events = {};
   subKey = "";
@@ -266,6 +269,7 @@ binder.addProcessor(
   new (class extends Processor {
     _process(vm, el, k, v) {
       el.style[k] = v;
+      console.log(el.style[k]);
     }
   })("styles")
 );
@@ -311,6 +315,10 @@ const rootViewModel = ViewModel.get({
     this.contents.properties.innerHTML = Math.random()
       .toString(16)
       .replace(".", "");
+    console.log(
+      this.wrapper.styles.background,
+      this.contents.properties.innerHTML
+    );
   },
   wrapper,
   title,
@@ -323,6 +331,6 @@ binder.watch(rootViewModel);
 // 테스트를 위하여 viewmodel의 내용을 실시간으로 변경하도록 한다.
 const f = () => {
   rootViewModel.changeContents();
-  if (!rootViewModel.isStop) requestAnimationFrame(f);
+  if (!rootViewModel.isStop) setTimeout(f, 5000);
 };
-requestAnimationFrame(f);
+setTimeout(f, 5000);
