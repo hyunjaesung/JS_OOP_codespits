@@ -29,29 +29,74 @@ const BinderItem = class {
   }
 };
 
-const Scanner = class {
-  scan(el, _ = type(el, HTMLElement)) {
-    const binder = new Binder(); // 바인더 만든다음에 넣어서 리턴
-    this.checkItem(binder, el); // 조상 넣어주기
-    // DOM 루프
-    const stack = [el.firstElementChild];
-    let target;
-    while ((target = stack.pop())) {
-      this.checkItem(binder, target); // 자식들도 검정해서 넣어주기
+// 추상 클래스
+const Visitor = class {
+  visit(action, target, _0 = type(action, "function")) {
+    // target 인자는 상속받는 쪽에서 오버라이드 해서 결정
+    // 타 언어에서는 제네릭으로 자식에서 타입 적용가능
+    throw "override";
+  }
+};
+
+const DomVisitor = class extends Visitor {
+  constructor() {
+    super();
+  }
+  visit(
+    action,
+    target,
+    _0 = type(action, "function"),
+    _1 = type(target, HTMLElement)
+  ) {
+    // DOM 순회 코드 패턴
+    const stack = [];
+    let curr = target.firstElementChild;
+    do {
+      action(curr);
+      // action을 받아서 상호작용 해야한다
+      // template method의 hook과 같은 역헐
+      // 제어를 준 쪽과의 소통 창구
       if (target.firstElementChild) stack.push(target.firstElementChild);
-      // 자식 안에 자식이 있는지 확인
       if (target.nextElementSibling) stack.push(target.nextElementSibling);
-      // 자식의 형제가 있는지 확인
-      // 스택 때문에 계속 형제의 형제 형제의 형제 가면서 쫘악 다 끌어온다
-    }
+    } while ((curr = stack.pop()));
+  }
+};
+
+const Scanner = class {
+  #visitor;
+  constructor(visitor, _ = type(visitor, DomVisitor)) {
+    this.#visitor = visitor;
+  }
+
+  scan(target, _ = type(target, HTMLElement)) {
+    const binder = new Binder(); // 바인더 만든다음에 넣어서 리턴
+    // this.checkItem(binder, el); // 조상 넣어주기
+    // // DOM 루프
+    // const stack = [el.firstElementChild];
+    // let target;
+    // while ((target = stack.pop())) {
+    //   this.checkItem(binder, target); // 자식들도 검정해서 넣어주기
+    //   if (target.firstElementChild) stack.push(target.firstElementChild);
+    //   // 자식 안에 자식이 있는지 확인
+    //   if (target.nextElementSibling) stack.push(target.nextElementSibling);
+    //   // 자식의 형제가 있는지 확인
+    //   // 스택 때문에 계속 형제의 형제 형제의 형제 가면서 쫘악 다 끌어온다
+    // }
+
+    const action = (el) => {
+      const vm = el.getAttribute("data-viewmodel"); // 스캐너의 핵심 스펙
+      if (vm) binder.add(new BinderItem(el, vm));
+    };
+    action(target);
+    this.#visitor.visit(action, target);
     return binder;
   }
 
-  checkItem(binder, el) {
-    const vm = el.getAttribute("data-viewmodel");
-    // html 스펙이 바뀌면 여기만 바꾸면 된다
-    if (vm) binder.add(new BinderItem(el, vm));
-  }
+  // checkItem(binder, el) {
+  //   const vm = el.getAttribute("data-viewmodel"); // 스캐너의 핵심 스펙
+  //   // html 스펙이 바뀌면 여기만 바꾸면 된다
+  //   if (vm) binder.add(new BinderItem(el, vm));
+  // }
 };
 
 const Binder = class extends ViewModelListener {
@@ -297,71 +342,71 @@ const ViewModel = class extends ViewModelSubject {
 
 // 실행
 // HTML에 정의된 viewmodel을 scan한다.
-const scanner = new Scanner();
-const binder = scanner.scan(document.querySelector("#target"));
+// const scanner = new Scanner();
+// const binder = scanner.scan(document.querySelector("#target"));
 
-// Binder에 Strategy를 주입한다.
-binder.addProcessor(
-  new (class extends Processor {
-    _process(vm, el, k, v) {
-      el.style[k] = v;
-    }
-  })("styles")
-);
-binder.addProcessor(
-  new (class extends Processor {
-    _process(vm, el, k, v) {
-      el.setAttribute(k, v);
-    }
-  })("attributes")
-);
-binder.addProcessor(
-  new (class extends Processor {
-    _process(vm, el, k, v) {
-      el[k] = v;
-    }
-  })("properties")
-);
-binder.addProcessor(
-  new (class extends Processor {
-    _process(vm, el, k, v) {
-      el[`on${k}`] = (e) => v.call(el, e, vm);
-    }
-  })("events")
-);
+// // Binder에 Strategy를 주입한다.
+// binder.addProcessor(
+//   new (class extends Processor {
+//     _process(vm, el, k, v) {
+//       el.style[k] = v;
+//     }
+//   })("styles")
+// );
+// binder.addProcessor(
+//   new (class extends Processor {
+//     _process(vm, el, k, v) {
+//       el.setAttribute(k, v);
+//     }
+//   })("attributes")
+// );
+// binder.addProcessor(
+//   new (class extends Processor {
+//     _process(vm, el, k, v) {
+//       el[k] = v;
+//     }
+//   })("properties")
+// );
+// binder.addProcessor(
+//   new (class extends Processor {
+//     _process(vm, el, k, v) {
+//       el[`on${k}`] = (e) => v.call(el, e, vm);
+//     }
+//   })("events")
+// );
 
-// ViewModel을 만든다.
-const getRandom = () => parseInt(Math.random() * 150) + 100;
+// // ViewModel을 만든다.
+// const getRandom = () => parseInt(Math.random() * 150) + 100;
 
-const wrapper = ViewModel.get({
-  styles: { width: "50%", background: "#ffa", cursor: "pointer" },
-  events: {
-    click(e, vm) {
-      vm.parent.isStop = true;
-    }
-  }
-});
-const title = ViewModel.get({ properties: { innerHTML: "Title" } });
-const contents = ViewModel.get({ properties: { innerHTML: "Contents" } });
-const rootViewModel = ViewModel.get({
-  isStop: false,
-  changeContents() {
-    this.wrapper.styles.background = `rgb(${getRandom()},${getRandom()},${getRandom()})`;
-    this.contents.properties.innerHTML = Math.random()
-      .toString(16)
-      .replace(".", "");
-  },
-  wrapper,
-  title,
-  contents
-});
+// const wrapper = ViewModel.get({
+//   styles: { width: "50%", background: "#ffa", cursor: "pointer" },
+//   events: {
+//     click(e, vm) {
+//       vm.parent.isStop = true;
+//     }
+//   }
+// });
+// const title = ViewModel.get({ properties: { innerHTML: "Title" } });
+// const contents = ViewModel.get({ properties: { innerHTML: "Contents" } });
+// const rootViewModel = ViewModel.get({
+//   isStop: false,
+//   changeContents() {
+//     this.wrapper.styles.background = `rgb(${getRandom()},${getRandom()},${getRandom()})`;
+//     this.contents.properties.innerHTML = Math.random()
+//       .toString(16)
+//       .replace(".", "");
+//   },
+//   wrapper,
+//   title,
+//   contents
+// });
 
-// Binder는 RootViewModel만 Observing 한다.
-binder.watch(rootViewModel);
+// // Binder는 RootViewModel만 Observing 한다.
+// binder.watch(rootViewModel);
 
-// 테스트를 위하여 viewmodel의 내용을 실시간으로 변경하도록 한다.
-const f = () => {
-  rootViewModel.changeContents();
-  // if (!rootViewModel.isStop) setTimeout(f, 5000);
-};
-setTimeout(f, 5000);
+// // 테스트를 위하여 viewmodel의 내용을 실시간으로 변경하도록 한다.
+// const f = () => {
+//   rootViewModel.changeContents();
+//   // if (!rootViewModel.isStop) setTimeout(f, 5000);
+// };
+// setTimeout(f, 5000);
