@@ -53,50 +53,46 @@ const DomVisitor = class extends Visitor {
     let curr = target.firstElementChild;
     do {
       action(curr);
-      // action을 받아서 상호작용 해야한다
-      // template method의 hook과 같은 역헐
-      // 제어를 준 쪽과의 소통 창구
-      if (target.firstElementChild) stack.push(target.firstElementChild);
-      if (target.nextElementSibling) stack.push(target.nextElementSibling);
+      if (curr.firstElementChild) stack.push(curr.firstElementChild);
+      if (curr.nextElementSibling) stack.push(curr.nextElementSibling);
     } while ((curr = stack.pop()));
   }
 };
 
+// Scanner의 추상 클래스
 const Scanner = class {
-  #visitor;
+  #visitor; // 같은 계층의 visitor
+  // 같은 수준 맞추기 위해 네이티브 지식이 없어야한다
   constructor(visitor, _ = type(visitor, DomVisitor)) {
     this.#visitor = visitor;
   }
+  // 자식이 부모에 접근하기 위해서 한번더 감싼 visit 메서드 만들어서 위임
+  visit(action, target) {
+    this.#visitor.visit(action, target);
+  }
+
+  // override 하기위한 함수
+  // 지저분한 로직은 안쓰고 계층을 맞춘다
+  scan(target) {
+    throw "override";
+  }
+};
+
+const DomScanner = class extends Scanner {
+  constructor(visitor, _ = type(visitor, DomVisitor)) {
+    super(visitor); // 자식이 부모를 대체
+  }
 
   scan(target, _ = type(target, HTMLElement)) {
-    const binder = new Binder(); // 바인더 만든다음에 넣어서 리턴
-    // this.checkItem(binder, el); // 조상 넣어주기
-    // // DOM 루프
-    // const stack = [el.firstElementChild];
-    // let target;
-    // while ((target = stack.pop())) {
-    //   this.checkItem(binder, target); // 자식들도 검정해서 넣어주기
-    //   if (target.firstElementChild) stack.push(target.firstElementChild);
-    //   // 자식 안에 자식이 있는지 확인
-    //   if (target.nextElementSibling) stack.push(target.nextElementSibling);
-    //   // 자식의 형제가 있는지 확인
-    //   // 스택 때문에 계속 형제의 형제 형제의 형제 가면서 쫘악 다 끌어온다
-    // }
-
+    const binder = new Binder();
     const action = (el) => {
-      const vm = el.getAttribute("data-viewmodel"); // 스캐너의 핵심 스펙
+      const vm = el.getAttribute("data-viewmodel");
       if (vm) binder.add(new BinderItem(el, vm));
     };
     action(target);
-    this.#visitor.visit(action, target);
+    this.visit(action, target); // 이제 계층 일치
     return binder;
   }
-
-  // checkItem(binder, el) {
-  //   const vm = el.getAttribute("data-viewmodel"); // 스캐너의 핵심 스펙
-  //   // html 스펙이 바뀌면 여기만 바꾸면 된다
-  //   if (vm) binder.add(new BinderItem(el, vm));
-  // }
 };
 
 const Binder = class extends ViewModelListener {
@@ -341,72 +337,63 @@ const ViewModel = class extends ViewModelSubject {
 };
 
 // 실행
-// HTML에 정의된 viewmodel을 scan한다.
-// const scanner = new Scanner();
-// const binder = scanner.scan(document.querySelector("#target"));
+const scanner = new DomScanner(new DomVisitor());
+const binder = scanner.scan(document.querySelector("#target"));
+binder.addProcessor(
+  new (class extends Processor {
+    _process(vm, el, k, v) {
+      el.style[k] = v;
+    }
+  })("styles")
+);
+binder.addProcessor(
+  new (class extends Processor {
+    _process(vm, el, k, v) {
+      el.setAttribute(k, v);
+    }
+  })("attributes")
+);
+binder.addProcessor(
+  new (class extends Processor {
+    _process(vm, el, k, v) {
+      el[k] = v;
+    }
+  })("properties")
+);
+binder.addProcessor(
+  new (class extends Processor {
+    _process(vm, el, k, v) {
+      el[`on${k}`] = (e) => v.call(el, e, vm);
+    }
+  })("events")
+);
 
-// // Binder에 Strategy를 주입한다.
-// binder.addProcessor(
-//   new (class extends Processor {
-//     _process(vm, el, k, v) {
-//       el.style[k] = v;
-//     }
-//   })("styles")
-// );
-// binder.addProcessor(
-//   new (class extends Processor {
-//     _process(vm, el, k, v) {
-//       el.setAttribute(k, v);
-//     }
-//   })("attributes")
-// );
-// binder.addProcessor(
-//   new (class extends Processor {
-//     _process(vm, el, k, v) {
-//       el[k] = v;
-//     }
-//   })("properties")
-// );
-// binder.addProcessor(
-//   new (class extends Processor {
-//     _process(vm, el, k, v) {
-//       el[`on${k}`] = (e) => v.call(el, e, vm);
-//     }
-//   })("events")
-// );
-
-// // ViewModel을 만든다.
-// const getRandom = () => parseInt(Math.random() * 150) + 100;
-
-// const wrapper = ViewModel.get({
-//   styles: { width: "50%", background: "#ffa", cursor: "pointer" },
-//   events: {
-//     click(e, vm) {
-//       vm.parent.isStop = true;
-//     }
-//   }
-// });
-// const title = ViewModel.get({ properties: { innerHTML: "Title" } });
-// const contents = ViewModel.get({ properties: { innerHTML: "Contents" } });
-// const rootViewModel = ViewModel.get({
-//   isStop: false,
-//   changeContents() {
-//     this.wrapper.styles.background = `rgb(${getRandom()},${getRandom()},${getRandom()})`;
-//     this.contents.properties.innerHTML = Math.random()
-//       .toString(16)
-//       .replace(".", "");
-//   },
-//   wrapper,
-//   title,
-//   contents
-// });
-
-// // Binder는 RootViewModel만 Observing 한다.
-// binder.watch(rootViewModel);
-
-// // 테스트를 위하여 viewmodel의 내용을 실시간으로 변경하도록 한다.
-// const f = () => {
-//   rootViewModel.changeContents();
-//   // if (!rootViewModel.isStop) setTimeout(f, 5000);
-// };
-// setTimeout(f, 5000);
+const getRandom = () => parseInt(Math.random() * 150) + 100;
+const wrapper = ViewModel.get({
+  styles: { width: "50%", background: "#ffa", cursor: "pointer" },
+  events: {
+    click(e, vm) {
+      vm.parent.isStop = true;
+    }
+  }
+});
+const title = ViewModel.get({ properties: { innerHTML: "Title" } });
+const contents = ViewModel.get({ properties: { innerHTML: "Contents" } });
+const rootViewModel = ViewModel.get({
+  isStop: false,
+  changeContents() {
+    this.wrapper.styles.background = `rgb(${getRandom()},${getRandom()},${getRandom()})`;
+    this.contents.properties.innerHTML = Math.random()
+      .toString(16)
+      .replace(".", "");
+  },
+  wrapper,
+  title,
+  contents
+});
+binder.watch(rootViewModel);
+const f = () => {
+  rootViewModel.changeContents();
+  // if (!rootViewModel.isStop) setTimeout(f, 5000)
+};
+setTimeout(f, 5000);
