@@ -154,32 +154,10 @@ const ViewModelValue = class {
   }
 };
 
-const ViewModel = class extends ViewModelListener {
+const ViewModel = class extends ViewModelSubject {
   static get(data) {
     // static으로 ViewModel.get() 으로만 뷰모델 생성 가능
     return new ViewModel(data);
-  }
-
-  static #subjects = new Set();
-  static #inited = false;
-  static notify(vm) {
-    // 모든 vm들을 위한 하나의 루프
-    // 변화를 감지하고 Observer(Binder)에게 알린다.
-    this.#subjects.add(vm);
-    if (this.#inited) return;
-    this.#inited = true;
-    const f = () => {
-      this.#subjects.forEach((vm) => {
-        // 만들어진 ViewModel에 대해 반복문을 돌린다.
-        if (vm.#isUpdated.size) {
-          // 변경된 내역이 있을 경우 isUpdated 에 쌓일테니 여기 발동
-          vm.notify(); // Listener에게 알리고, 이 notify()는 static notify 아니다
-          vm.#isUpdated.clear(); // 변경된 내역을 삭제한다.
-        }
-      });
-      requestAnimationFrame(f);
-    };
-    requestAnimationFrame(f);
   }
 
   styles = {};
@@ -238,27 +216,64 @@ const ViewModel = class extends ViewModelListener {
     update.forEach((value) => this.#isUpdated.add(value));
     // 자식들 변화가 와도 내걸로 넣을게
   }
+};
 
-  #isUpdated = new Set();
+const ViewModelSubject = class extends ViewModelListener {
+  #info = new Set();
   #listeners = new Set();
 
-  // Subject 로직
+  add(value, _ = type(value, ViewModelValue)) {
+    this.#info.add(value);
+  }
+  claer() {
+    this.#info.clear();
+  }
+
   addListener(listener, _ = type(listener, ViewModelListener)) {
     this.#listeners.add(listener);
+    ViewModelSubject.watch(this);
   }
   removeListener(listener, _ = type(listener, ViewModelListener)) {
     this.#listeners.delete(listener);
+    if (!this.#listeners.size) ViewModelSubject.unwatch(this);
   }
   notify() {
-    this.#listeners.forEach(
-      (listener) => listener.viewmodelUpdated(this.#isUpdated)
-      // true false가 아니라 업데이트 된거 다보낸다
+    this.#listeners.forEach((listener) =>
+      listener.viewmodelUpdated(this.#info)
     );
+  }
+
+  static #subjects = new Set();
+  static #inited = false;
+  static notify() {
+    const f = () => {
+      this.#subjects.forEach((vm) => {
+        if (vm.#info.size) {
+          vm.notify();
+          vm.clear();
+        }
+      });
+      if (this.#inited) requestAnimationFrame(f);
+    };
+    requestAnimationFrame(f);
+  }
+
+  // 리스너에 등록된 뷰모델이 있어야 시작
+  static watch(vm, _ = type(vm, ViewModelListener)) {
+    this.#subjects.add(vm);
+    if (!this.#inited) {
+      this.#inited = true; // 감시 시작
+      this.notify();
+    }
+  }
+
+  static unwatch(vm, _ = type(vm, ViewModelListener)) {
+    this.#subjects.delete(vm);
+    if ((!this.#subjects, size)) this.#inited = false; // 감시 끄기
   }
 };
 
 // 실행
-
 // HTML에 정의된 viewmodel을 scan한다.
 const scanner = new Scanner();
 const binder = scanner.scan(document.querySelector("#target"));
