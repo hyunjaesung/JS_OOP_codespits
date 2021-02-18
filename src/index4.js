@@ -156,7 +156,6 @@ const ViewModelValue = class {
 
 const ViewModel = class extends ViewModelSubject {
   static get(data) {
-    // static으로 ViewModel.get() 으로만 뷰모델 생성 가능
     return new ViewModel(data);
   }
 
@@ -164,16 +163,39 @@ const ViewModel = class extends ViewModelSubject {
   attributes = {};
   properties = {};
   events = {};
-  subKey = "";
-  parent = null;
+
+  // public getter private setter 패턴
+  // 외부에서는 읽기전용만 가능 readonly
+  #subKey = "";
+  get subKey() {
+    return this.#subKey;
+  }
+
+  #parent = null;
+  get parent() {
+    return this.#parent;
+  }
+  setParent(parent, subKey) {
+    // 애도 사실 private인데 JS에서는 표현할 방법이없다
+    // 내부 사용 메서드는 되도록 _name으로 붙여주도록 하자
+    this.#parent = type(parent, ViewModel);
+
+    // 아래는 부모 설정과 함께 한번에 일어나는 일들 parent가 들어오면 같이 로직이 동작해야한다
+    // transaction 연산임을 알려야한다 -> 함수로 만들기
+    // 보통 복붙으로 코드를 많이쓰는데 빼먹는 코드들이 많다
+    // transaction을 통째로 이렇게 함수로 만들어야지 빼먹지 않고 만든다
+    this.#subKey = subKey;
+    this.addListener(parent);
+  }
 
   static descriptor = (vm, category, k, v) => ({
     enumerable: true,
     get: () => v,
     set: (newV) => {
-      // 값을 대체 후, isUpdated에 등록하고, listener에게 변경된 내역이 전달된다.
       v = newV;
-      vm.#isUpdated.add(new ViewModelValue(vm.subKey, category, k, v));
+      // vm.#isUpdated.add(new ViewModelValue(vm.subKey, category, k, v));
+      // 상속받은 매서드로 subject 클래스에서 실행
+      vm.add(new ViewModelValue(vm.subKey, category, k, v));
     }
   });
 
@@ -198,23 +220,23 @@ const ViewModel = class extends ViewModelSubject {
           ViewModel.descriptor(this, "", key, value)
         );
         if (value instanceof ViewModel) {
-          value.parent = this; // 역 참조할 수 있어야 한다.
-          value.subKey = key;
-          value.addListener(this); // 자식이 변화했을 때 변화를 알아차린다.
-          // ViewModel 은 Subject이자 Listener 인 경우가 빈번하다.
+          // value.parent = this;
+          // value.subKey = key;
+          // value.addListener(this);
+
+          // transaciton 함수로 묶어서 동작
+          value.setParent(this, key);
         }
       }
     });
-    ViewModel.notify(this);
-    // ViewModel이 생성되는 시점에 변화의 감지를 시작한다.
-    // static 메서드한테 rAF로 한번에 다 해달라고 부탁!!
+    // ViewModel.notify(this); 뷰모델 서브젝트가 알아서 할일
     Object.seal(this);
   }
 
   viewmodelUpdated(update) {
-    // 추상 클레스 메서드 오버라이딩
-    update.forEach((value) => this.#isUpdated.add(value));
-    // 자식들 변화가 와도 내걸로 넣을게
+    // update.forEach((value) => this.#isUpdated.add(value));
+    // ViewModelSubject의 add로 통해서 동작
+    update.forEach((value) => this.add(value));
   }
 };
 
