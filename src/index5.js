@@ -7,6 +7,10 @@ const type = (target, type) => {
   return target;
 };
 
+const err = (v) => {
+  throw v;
+};
+
 const ViewModelListener = class {
   viewmodelUpdated(viewmodel, updated) {
     throw "override";
@@ -274,14 +278,8 @@ const ViewModel = class extends ViewModelSubject {
     return this.#parent;
   }
   setParent(parent, subKey) {
-    // 애도 사실 private인데 JS에서는 표현할 방법이없다
-    // 내부 사용 메서드는 되도록 _name으로 붙여주도록 하자
     this.#parent = type(parent, ViewModel);
 
-    // 아래는 부모 설정과 함께 한번에 일어나는 일들 parent가 들어오면 같이 로직이 동작해야한다
-    // transaction 연산임을 알려야한다 -> 함수로 만들기
-    // 보통 복붙으로 코드를 많이쓰는데 빼먹는 코드들이 많다
-    // transaction을 통째로 이렇게 함수로 만들어야지 빼먹지 않고 만든다
     this.#subKey = subKey;
     this.addListener(parent);
   }
@@ -291,8 +289,6 @@ const ViewModel = class extends ViewModelSubject {
     get: () => v,
     set: (newV) => {
       v = newV;
-      // vm.#isUpdated.add(new ViewModelValue(vm.subKey, category, k, v));
-      // 상속받은 매서드로 subject 클래스에서 실행
       vm.add(new ViewModelValue(vm.subKey, category, k, v));
     }
   });
@@ -318,28 +314,20 @@ const ViewModel = class extends ViewModelSubject {
           ViewModel.descriptor(this, "", key, value)
         );
         if (value instanceof ViewModel) {
-          // value.parent = this;
-          // value.subKey = key;
-          // value.addListener(this);
-
-          // transaciton 함수로 묶어서 동작
           value.setParent(this, key);
         }
       }
     });
-    // ViewModel.notify(this); 뷰모델 서브젝트가 알아서 할일
     Object.seal(this);
   }
 
   viewmodelUpdated(viewmodel, update) {
-    // update.forEach((value) => this.#isUpdated.add(value));
-    // ViewModelSubject의 add로 통해서 동작
     update.forEach((value) => this.add(value));
   }
 
   get notifyTarget() {
     return this;
-  } // notifyTarget을 호출하면 ViewModel을 보낸다.
+  }
 };
 
 // 실행
