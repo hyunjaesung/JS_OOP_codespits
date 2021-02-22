@@ -54,11 +54,11 @@ const Binder = class extends ViewModelListener {
       const el = item.el;
 
       processors.forEach(([pKey, processor]) => {
-        // if (vm[pKey]) {
-        Object.entries(vm[pKey]).forEach(([key, value]) => {
-          processor.process(vm, el, key, value);
-        });
-        // }
+        if (vm[pKey]) {
+          Object.entries(vm[pKey]).forEach(([key, value]) => {
+            processor.process(vm, el, key, value);
+          });
+        }
       });
     });
   }
@@ -82,7 +82,8 @@ const Binder = class extends ViewModelListener {
     updated.forEach(({ subKey, category, key, value }) => {
       if (!items[subKey]) return;
       const [vm, el] = items[subKey];
-      const processor = this.#processors[category];
+      const processor = this.#processors[category.split(".").pop()];
+
       // injection 이 안 되어 있을 경우  return
       if (!el || !processor) return;
       processor.process(vm, el, key, value);
@@ -261,10 +262,11 @@ const ViewModel = class extends ViewModelSubject {
     return new ViewModel(data);
   }
 
-  styles = {};
-  attributes = {};
-  properties = {};
-  events = {};
+  // 고정하던 부분 삭제
+  // styles = {};
+  // attributes = {};
+  // properties = {};
+  // events = {};
 
   // public getter private setter 패턴
   // 외부에서는 읽기전용만 가능 readonly
@@ -277,47 +279,102 @@ const ViewModel = class extends ViewModelSubject {
   get parent() {
     return this.#parent;
   }
-  setParent(parent, subKey) {
+  _setParent(parent, subKey) {
     this.#parent = type(parent, ViewModel);
 
     this.#subKey = subKey;
     this.addListener(parent);
   }
 
-  static descriptor = (vm, category, k, v) => ({
-    enumerable: true,
-    get: () => v,
-    set: (newV) => {
-      v = newV;
-      vm.add(new ViewModelValue(vm.subKey, category, k, v));
-    }
-  });
+  // static descriptor = (vm, category, k, v) => ({
+  //   enumerable: true,
+  //   get: () => v,
+  //   set: (newV) => {
+  //     v = newV;
+  //     vm.add(new ViewModelValue(vm.subKey, category, k, v));
+  //   }
+  // });
 
-  static defineProperties = (vm, category, obj) =>
-    Object.defineProperties(
-      obj,
-      Object.entries(obj).reduce(
-        (r, [k, v]) => ((r[k] = ViewModel.descriptor(vm, category, k, v)), r),
-        {}
-      )
-    );
+  // static defineProperties = (vm, category, obj) =>
+  //   Object.defineProperties(
+  //     obj,
+  //     Object.entries(obj).reduce(
+  //       (r, [k, v]) => ((r[k] = ViewModel.descriptor(vm, category, k, v)), r),
+  //       {}
+  //     )
+  //   );
+
+  static KEY = Symbol();
+  // 모든 Key를 Observer에게 보고한다.
+  define(target, k, v) {
+    if (v && typeof v == "object" && !(v instanceof ViewModel)) {
+      if (v instanceof Array) {
+        // 배열이 value 인경우
+        target[k] = [];
+
+        target[k][ViewModel.KEY] = target[ViewModel.KEY] + "." + k;
+        // 상대적인 경로 표기. key의 확장
+
+        v.forEach((v, i) => this.define(target[k], i, v)); // 재귀로 안으로 들어간다
+      } else {
+        // Object가 value 인 경우
+        target[k] = { [ViewModel.KEY]: target[ViewModel.KEY] + "." + k };
+        Object.entries(v).forEach(([ik, iv]) => this.define(target[k], ik, iv));
+      }
+      Object.defineProperty(target[k], "subKey", {
+        get: () => target.subKey
+      });
+    } else {
+      // 재귀 함수는 재귀가 끝나는 조건을 명확하게 알면 된다.
+      // 종결 조건을 반드시 만들어야 한다.
+      if (v instanceof ViewModel) v._setParent(this, k);
+
+      // 이리 짜면 크롬 빼곤 배열 length 안나올수도..
+      Object.defineProperties(target, {
+        [k]: {
+          enumerable: true,
+          get: (_) => v,
+          set: (newV) => {
+            v = newV;
+
+            // 완성된 KEY가 들어가는 곳
+            // category가 된다
+            this.add(
+              new ViewModelValue(target.subKey, target[ViewModel.KEY], k, v)
+            );
+          }
+        }
+      });
+    }
+  }
 
   constructor(data, _ = type(data, "object")) {
     super();
-    Object.entries(data).forEach(([key, value]) => {
-      if ("styles,attributes,properties".includes(key)) {
-        this[key] = ViewModel.defineProperties(this, key, value);
-      } else {
-        Object.defineProperty(
-          this,
-          key,
-          ViewModel.descriptor(this, "", key, value)
-        );
-        if (value instanceof ViewModel) {
-          value.setParent(this, key);
-        }
-      }
+    this[ViewModel.KEY] = "root";
+
+    // Object.entries(data).forEach([key, value] => this[key] = value);
+    // 단순히 위처럼 넣지 않고 defineProperty를 쓰기 위해서 this category value 다 보내줘야한다
+    // define이 value 따라서 parser의 기능 수행 할 것
+    // 재귀 함수는 진입점 함수와 루프함수가 있다
+    // 여기 쓰이는건 진입점 함수가 된다
+    Object.entries(data).forEach(([k, v]) => {
+      this.define(this, k, v);
     });
+
+    // Object.entries(data).forEach(([key, value]) => {
+    //   if ("styles,attributes,properties".includes(key)) {
+    //     this[key] = ViewModel.defineProperties(this, key, value);
+    //   } else {
+    //     Object.defineProperty(
+    //       this,
+    //       key,
+    //       ViewModel.descriptor(this, "", key, value)
+    //     );
+    //     if (value instanceof ViewModel) {
+    //       value.setParent(this, key);
+    //     }
+    //   }
+    // });
     Object.seal(this);
   }
 
@@ -332,35 +389,91 @@ const ViewModel = class extends ViewModelSubject {
 
 // 실행
 const scanner = new DomScanner(new DomVisitor());
-const binder = scanner.scan(document.querySelector("#target"));
-binder.addProcessor(
-  new (class extends Processor {
-    _process(vm, el, k, v) {
-      el.style[k] = v;
-    }
-  })("styles")
-);
-binder.addProcessor(
-  new (class extends Processor {
-    _process(vm, el, k, v) {
-      el.setAttribute(k, v);
-    }
-  })("attributes")
-);
-binder.addProcessor(
-  new (class extends Processor {
-    _process(vm, el, k, v) {
-      el[k] = v;
-    }
-  })("properties")
-);
-binder.addProcessor(
-  new (class extends Processor {
-    _process(vm, el, k, v) {
-      el[`on${k}`] = (e) => v.call(el, e, vm);
-    }
-  })("events")
-);
+// const binder = scanner.scan(document.querySelector("#target"));
+// binder.addProcessor(
+//   new (class extends Processor {
+//     _process(vm, el, k, v) {
+//       el.style[k] = v;
+//     }
+//   })("styles")
+// );
+// binder.addProcessor(
+//   new (class extends Processor {
+//     _process(vm, el, k, v) {
+//       el.setAttribute(k, v);
+//     }
+//   })("attributes")
+// );
+// binder.addProcessor(
+//   new (class extends Processor {
+//     _process(vm, el, k, v) {
+//       el[k] = v;
+//     }
+//   })("properties")
+// );
+// binder.addProcessor(
+//   new (class extends Processor {
+//     _process(vm, el, k, v) {
+//       el[`on${k}`] = (e) => v.call(el, e, vm);
+//     }
+//   })("events")
+// );
+
+const setDomProcessor = ((_) => {
+  const visitor = new DomVisitor();
+  const scanner = new DomScanner(visitor);
+  const baseProcessors = [
+    new (class extends Processor {
+      _process(vm, el, k, v) {
+        el.style[k] = v;
+      }
+    })("styles"),
+    new (class extends Processor {
+      _process(vm, el, k, v) {
+        el.setAttribute(k, v);
+      }
+    })("attributes"),
+    new (class extends Processor {
+      _process(vm, el, k, v) {
+        el[k] = v;
+      }
+    })("properties"),
+    new (class extends Processor {
+      _process(vm, el, k, v) {
+        el["on" + k] = (e) => v.call(el, e, vm);
+      }
+    })("events"),
+    new (class extends Processor {
+      _process(vm, el, k, v) {
+        const { name = err("no name"), data = err("no data") } = vm.template;
+        const template = DomScanner.get(name) || err("no template:" + name);
+        if (!(data instanceof Array)) err("invaild data:" + data);
+        Object.freeze(data);
+        visitor.visit((el) => {
+          if (el.binder) {
+            const [binder, vm] = el.binder;
+            binder.unwatch(vm);
+            delete el.binder;
+          }
+        }, el);
+        el.innerHTML = "";
+        data.forEach((vm, i) => {
+          if (!(vm instanceof ViewModel)) err(`invalid Viewmodel:${i} - ${vm}`);
+          const child = template.cloneNode(true);
+          const binder = setProcessor(scanner.scan(child));
+          el.binders = [binder, vm];
+          binder.watch(vm);
+          el.appendChild(child);
+        });
+      }
+    })("template")
+  ];
+  const setProcessor = (binder, _ = type(binder, Binder)) => {
+    baseProcessors.forEach((v) => binder.addProcessor(v));
+    return binder;
+  };
+  return setProcessor;
+})();
 
 const getRandom = () => parseInt(Math.random() * 150) + 100;
 const wrapper = ViewModel.get({
@@ -385,6 +498,8 @@ const rootViewModel = ViewModel.get({
   title,
   contents
 });
+
+const binder = setDomProcessor(scanner.scan(document.body));
 binder.watch(rootViewModel);
 const f = () => {
   rootViewModel.changeContents();
